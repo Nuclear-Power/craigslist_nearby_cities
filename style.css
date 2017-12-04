@@ -1,0 +1,22 @@
+.link {
+	stroke: #999;
+	stroke-opacity: 0.6;
+}
+
+.node text {
+	cursor: pointer;
+	font-family: "Helvetica";
+	stroke: #333;
+}
+
+.node circle {
+  stroke: #fff;
+  stroke-width: 1.5px;
+}
+
+h1 {
+	font-size: 2rem;
+	font-family: "Helvetica";
+}
+
+
