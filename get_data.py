@@ -31,9 +31,9 @@ RESULTS[current_city] = cities
 
 def funct(city, city_list, city_links):
 	""" 
-	recursively assembles a dictionary
+	assembles a dictionary to write to a file
 	
-	input city->stry and city_list
+	input city->str and city_list
 	output: {city->str, city_list-list}
 	"""
 
