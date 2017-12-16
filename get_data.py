@@ -4,109 +4,121 @@ import re
 import json
 import time
 
-LINKS = []
-url = "https://newyork.craigslist.org/" #the center of the world
-RESULTS = {}
+city_list = []
+cities_and_links = {}
+RESULTS = []
+t = ()
 
+'''
+This script works and colects the data, but it is slightly different than the one I used to 
+build the site. Craiglist may have updated their pages to include the state of the city,
+which throws off the edges in the graph that is built. 
 
-city_page = urllib.request.urlopen(url)
-soup = bs(city_page, "html.parser")
+The current version of this script outputs a tuple with tupler_maker() but can output a 
+dictionary with output_builder()
+'''
 
-current_city = soup.find('h2', attrs={"class": "area"}).get_text()
-
-right_bar = soup.find('ul', attrs={"class": "acitem"})
-
-#get all the cities from the current page into a list
-cities = []
-for a in right_bar.find_all(href=True):
-	cities += a
-
-#get all the links for each of the cities into a list
-for link in right_bar.find_all('a', attrs={'href': re.compile("^//")}):
-	LINKS.append("https:" + link.get('href'))
-
-city_links = dict(zip(cities, LINKS))
-
-RESULTS[current_city] = cities
-
-def funct(city, city_list, city_links):
-	""" 
-	assembles a dictionary to write to a file
-	
-	input city->str and city_list
-	output: {city->str, city_list-list}
+class City(object):
 	"""
+	a city that has a page on craigslist
 
-	if city_list == []:
-		return RESULTS
-	print("cities left to analyze = {}".format(len(city_list)))
-	print('collecting data for {}'.format(city))
-	print("Waits 2s, then runs")
-	time.sleep(5)
-	print()
+	Attributes:
+		name: a string representing the city's name
+		link: a string representing the craiglist url of the city
+		nearby cities: a list containing the cities that are listed as "nearby" the 
+		city_page: the city's page html
+		right_bar: the right bar on the page that contains the nearby city links
+	"""
+	def __init__(self, url):
+  		self.url = url; 
+  		self.city_page = urllib.request.urlopen(self.url)
+  		self.soup = bs(self.city_page, "html.parser")
+  		self.right_bar = self.soup.find('ul', attrs={"class": "acitem"})
+  		self.name = self.soup.find('h2', attrs={"class": "area"}).get_text()
 
-	try:
-		city_page = urllib.request.urlopen(city_links[city])
-		
-	except:
-		print("connection error - waiting then retrying")
-		#sleep for 300s if there is a connection error then try again
-		time.sleep(120)
-		try:
-			print("retrying")
-			city_page = urllib.request.urlopen(city_links[city])
-		except:
-			print("connection error - return and writing data")
-			return RESULTS
+	def get_nearby_cities(self):
+	    nearby_cities = []
+	    for a in self.right_bar.find_all(href=True):
+	      nearby_cities += a
+	    #print(self.nearby_cities)
+	    return nearby_cities
 
-	#parse the html data
-	soup = bs(city_page, "html.parser")
-	current_city = soup.find('h2', attrs={"class": "area"}).get_text()
-	#print(current_city)
-	right_bar = soup.find('ul', attrs={"class": "acitem"})
+	def get_nearby_city_links(self):
+		links = []
+		for link in self.right_bar.find_all('a', attrs={'href': re.compile("^//")}):
+			links.append("https:" + link.get('href'))
+		return links
 
-	#get the nearby cities for the current city and add them to our
-	cities_to_add = []
-	for a in right_bar.find_all(href=True):
-		cities_to_add += a
-	#create a new list of cities
+	def cities_and_links_updater(self):
+		return dict(zip(self.get_nearby_cities(), self.get_nearby_city_links()))
 
-	#so maybe here when we make a set of it it removes duplicates, but we still need some of them
-	city_list = list(set(cities_to_add + city_list))
-	city_list.remove(city)
+	def output_builder(self):
+		return {self.name: self.get_nearby_cities()}
 
-	links_for_new_cities = []
-	for link in right_bar.find_all('a', attrs={'href': re.compile("^//")}):
-		links_for_new_cities.append("https:" + link.get('href'))
+	'''
+	create a tuple with the following data (name, city url, list of nearby cities, city's modified name)
+	this deals with the issue where when a city is listed as a nearby city, its name will be slightly 
+	different than the one listed on its own page
+	'''
 
-	#this is a new dict of cities and links to merge with city_links
-	city_links_to_add = dict(zip(cities_to_add, links_for_new_cities))
-	city_links.update(city_links_to_add)
+	def tuple_maker(self):
+		return (self.name, self.url, self.get_nearby_cities(), self.get_modified_name())
 
-	del city_links[city]
-	#need to do something like if city: city_links_to_add not in results then add it
-	#or if it is different maybe
+	def get_modified_name(self): 
+		'''
+		find the first  city on the sidebar, follow its link, find the target city in 
+		that city's nearby city list, and return that name, which is the modified name 
+		for the city
+		'''
+		links = self.get_nearby_city_links()
+		first_city_link = links[0]
+		first_city_page = urllib.request.urlopen(first_city_link)
+		first_city_soup = bs(first_city_page, "html.parser")
+		nearby_list_html = first_city_soup.find('ul', attrs={"class": "acitem"})
+		nearby_list_cities = []
+		for city in nearby_list_html.findAll('a'):
+			nearby_list_cities.append(city.string)
+		for city in nearby_list_cities:
+			if city == self.name:
+				#if the name is the same as the modified name
+				return self.name
+			if ',' in self.name: 
+				arr = self.name.split(',')
+				new_name = arr[0]
+				if city == new_name:
+					return new_name
+		return self.name
 
-	#remove city_link entries for cities that already have results
-	city_links = {key: city_links[key] for key in city_links if key not in RESULTS}
-	try:
-		del city_links[city]
-	except:
-		pass
-	#remake city_list to remove cities that have results
-	city_list = [key for key in city_links]
+city_list = ['new york']
+cities_and_links = {'new york': "https://newyork.craigslist.org/"}
+completed_cities = []
+
+while len(city_list) >0:
+	current_city = city_list[0]
+	print("Current City: " + str(current_city) + "\n")
+	#exception for 'more ...'  which shows up in nearby cities
+	#sometime, if more delete and continue on
+	if city_list[0] == 'more ...':
+		city_list.pop(0)
+		current_city = city_list[0]
+
+	x = City(cities_and_links[city_list[0]])
+	#add entries from the current city to the city list
+	city_list = list(set(city_list + x.get_nearby_cities()))
+	#updated completed cities with the current city
+	completed_cities.append(current_city)
+	#now we remove completed cites from city list so they aren't processed again
+	city_list = [x for x in city_list if x not in completed_cities]
 	city_list.sort()
 
-	RESULTS.update({city: cities_to_add})
+	cities_and_links.update(x.cities_and_links_updater())
+	#RESULTS.update(x.output_builder(x.url))
+	RESULTS.append(x.tuple_maker())
+	print("--> cities left: {} \n".format(len(city_list)))
+	#time.sleep(5)
 
-	try:
-		return RESULTS + funct(city_list[0], city_list, city_links)
-	except TypeError:
-		return RESULTS	
-
-x = funct(cities[0], cities, city_links)
-
-#open file and print our RESULTS to it
 f = open('out.txt', 'w')
-f.write(json.dumps(x))
+f.write(json.dumps(RESULTS))
 f.close()
+print("results writting to out.txt")
+print('end of script')
